@@ -21,11 +21,15 @@ export default function DashboardPage({ links, setLinks, copiedCode, setCopiedCo
 }) {
  const [search, setSearch] = useState("");
  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+ const [loading, setLoading] = useState(true);
 
  useEffect(() => {
  fetchUrls().then((data) => {
  if (data.success) setLinks(data.data);
- }).catch(() => {});
+ setLoading(false);
+ }).catch(() => {
+ setLoading(false);
+ });
  }, [setLinks]);
 
  const handleDelete = async (code: string) => {
@@ -91,6 +95,13 @@ export default function DashboardPage({ links, setLinks, copiedCode, setCopiedCo
  />
  </div>
 
+ {loading && (
+ <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 24px", gap: 12 }}>
+ <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#3ffb7f", animation: "pulse 1.2s ease-in-out infinite" }}></div>
+ <span style={{ fontSize: 13, color: "#4b6b56", fontFamily: "'JetBrains Mono', monospace" }}>fetching links from database…</span>
+ </div>
+ )}
+
  {filtered.length > 0 && (
  <div style={{ border: "1px solid rgba(57,255,136,0.2)" }}>
  <div style={{ display: "flex", gap: 16, padding: "10px 18px", fontSize: 11, letterSpacing: "0.08em", color: "#4b6b56", borderBottom: "1px solid rgba(57,255,136,0.2)", textTransform: "uppercase", fontFamily: "'JetBrains Mono', monospace" }}>
@@ -147,7 +158,7 @@ export default function DashboardPage({ links, setLinks, copiedCode, setCopiedCo
  </div>
  )}
 
- {filtered.length === 0 && (
+ {filtered.length === 0 && !loading && (
  <div style={{ textAlign: "center", padding: "64px 24px", border: "1px dashed rgba(57,255,136,0.2)" }}>
  <div style={{ fontSize: 14, color: "#4b6b56", marginBottom: 12, fontFamily: "'JetBrains Mono', monospace" }}>
  {links.length === 0 ? "-- no links yet --" : "-- no links match filter --"}
