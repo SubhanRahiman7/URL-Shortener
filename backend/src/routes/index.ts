@@ -1,7 +1,14 @@
 import { Router, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 import { createShortUrl, deleteUrl, getUrlByCode, incrementClicks, listUrls } from "../controllers/urlController";
 
 export const router = Router();
+
+const shortenLimiter = rateLimit({
+ windowMs: 15 * 60 * 1000,
+ max: 50,
+ message: "Too many requests. Try again later.",
+});
 
 router.get("/urls", async (_req: Request, res: Response) => {
  try {
@@ -12,7 +19,7 @@ router.get("/urls", async (_req: Request, res: Response) => {
  }
 });
 
-router.post("/shorten", async (req: Request, res: Response) => {
+router.post("/shorten", shortenLimiter, async (req: Request, res: Response) => {
  try {
  const { url, customCode, expiresAt } = req.body;
 

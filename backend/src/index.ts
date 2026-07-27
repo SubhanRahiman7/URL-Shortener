@@ -1,15 +1,19 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import dotenv from "dotenv";
 import { router } from "./routes";
 import { getUrlByCode, incrementClicks } from "./controllers/urlController";
+import { getPool } from "./config/database";
 
 dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
-app.use(cors());
+app.use(helmet());
+app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
 
 app.get("/api/health", (_req, res) => {
@@ -47,6 +51,18 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
  res.status(500).json({ success: false, error: "Internal server error" });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
  console.log(`Server running on port ${PORT}`);
+});
+
+process.on("SIGTERM", async () => {
+ console.log("SIGTERM received, shutting down gracefully");
+ server.close(async () => {
+ try {
+ const pool = getPool();
+ await pool.end();
+ console.log("DB pool closed");
+ } catch {}
+ process.exit(0);
+ });
 });

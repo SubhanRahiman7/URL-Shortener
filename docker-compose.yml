@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+ postgres:
+ image: postgres:16-alpine
+ restart: unless-stopped
+ environment:
+ POSTGRES_DB: urlshortener
+ POSTGRES_USER: urluser
+ POSTGRES_PASSWORD: urlpass123
+ ports:
+ - "5432:5432"
+ volumes:
+ - pgdata:/var/lib/postgresql/data
+ - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+
+ backend:
+ build: ./backend
+ restart: unless-stopped
+ ports:
+ - "5000:5000"
+ environment:
+ DATABASE_URL: postgres://urluser:urlpass123@postgres:5432/urlshortener
+ BASE_URL: http://localhost:5000
+ CORS_ORIGIN: http://localhost:5173
+ depends_on:
+ - postgres
+
+volumes:
+ pgdata:

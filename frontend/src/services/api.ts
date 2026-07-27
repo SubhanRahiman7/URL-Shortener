@@ -1,6 +1,6 @@
 import type { ApiListResponse, ShortenResponse } from "../types";
 
-const API_BASE = "/api";
+const API_BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 
 export async function shortenUrl(url: string, customCode?: string, expiresAt?: string): Promise<ShortenResponse> {
  const res = await fetch(`${API_BASE}/shorten`, {
