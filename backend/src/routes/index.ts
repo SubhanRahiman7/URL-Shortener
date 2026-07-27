@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
-import { createShortUrl, deleteUrl, getUrlByCode, incrementClicks, listUrls } from "../controllers/urlController.js";
+import { createShortUrl, deleteUrl, getUrlByCode, listUrls } from "../controllers/urlController.js";
 
 export const router = Router();
 
@@ -10,11 +10,18 @@ const shortenLimiter = rateLimit({
  message: "Too many requests. Try again later.",
 });
 
-router.get("/urls", async (_req: Request, res: Response) => {
+router.get("/urls/:code?", async (req: Request, res: Response) => {
  try {
+ const rawCode = req.params.code;
+ const code = Array.isArray(rawCode) ? rawCode[0] : rawCode;
+ if (code) {
+ const entry = await getUrlByCode(code);
+ if (!entry) return res.status(404).json({ success: false, error: "Not found" });
+ return res.json({ success: true, data: [entry] });
+ }
  const urls = await listUrls();
  res.json({ success: true, data: urls });
- } catch (err) {
+ } catch {
  res.status(500).json({ success: false, error: "Failed to fetch URLs" });
  }
 });

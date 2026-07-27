@@ -1,18 +1,31 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { UrlEntry } from "./types";
 import HomePage from "./pages/Home";
 import DashboardPage from "./pages/Dashboard";
+import { resolveUrl } from "./services/api";
 
 export default function App() {
  const [route, setRoute] = useState<"home" | "dashboard">("home");
  const [links, setLinks] = useState<UrlEntry[]>([]);
  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+ const [resolving, setResolving] = useState(true);
 
  const navHomeStyle: React.CSSProperties = { fontWeight: 600, color: "#3ffb7f", cursor: "pointer" };
  const navDashStyle: React.CSSProperties = { fontWeight: 600, color: "#4b6b56", cursor: "pointer" };
 
  const isHome = route === "home";
  const isDashboard = route === "dashboard";
+
+ useEffect(() => {
+ const path = window.location.pathname.slice(1);
+ if (!path || path === "favicon.ico") { setResolving(false); return; }
+ if (["shorten", "dashboard", "api"].includes(path.toLowerCase())) { setResolving(false); return; }
+ if (!/^[A-Za-z0-9_-]{4,20}$/.test(path)) { setResolving(false); return; }
+ resolveUrl(path).then((entry) => {
+ if (entry?.original_url) { window.location.replace(entry.original_url); }
+ else { setResolving(false); }
+ }).catch(() => { setResolving(false); });
+ }, []);
 
  return (
  <div style={{ minHeight: "100vh", background: "#04070a", position: "relative", overflowX: "hidden", fontFamily: "'JetBrains Mono', monospace", color: "#8fe6ad" }}>
@@ -41,13 +54,19 @@ export default function App() {
  </div>
  </nav>
 
- {isHome && (
+ {resolving && (
+ <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", color: "#4b6b56", fontSize: 13, fontFamily: "'JetBrains Mono', monospace" }}>
+ resolving…
+ </div>
+ )}
+
+ {!resolving && isHome && (
  <main style={{ position: "relative", zIndex: 1, maxWidth: 660, margin: "0 auto", padding: "72px 24px 120px", animation: "pageIn 0.35s ease both" }}>
  <HomePage onNavigate={setRoute} />
  </main>
  )}
 
- {isDashboard && (
+ {!resolving && isDashboard && (
  <main style={{ position: "relative", zIndex: 1, maxWidth: 900, margin: "0 auto", padding: "56px 24px 120px", animation: "pageIn 0.35s ease both" }}>
  <DashboardPage links={links} setLinks={setLinks} copiedCode={copiedCode} setCopiedCode={setCopiedCode} onNavigate={setRoute} />
  </main>

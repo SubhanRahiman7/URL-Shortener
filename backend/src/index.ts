@@ -14,7 +14,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
-const STATIC_DIR = path.join(__dirname, "..", "frontend", "dist");
+const STATIC_DIR = path.resolve(__dirname, "..", "frontend", "dist");
+const INDEX_FILE = path.join(STATIC_DIR, "index.html");
 
 app.use(helmet());
 app.use(cors({ origin: CORS_ORIGIN }));
@@ -30,12 +31,13 @@ app.get("/:code", async (req, res) => {
  try {
  const { code } = req.params;
  if (!/^[A-Za-z0-9_-]{4,20}$/.test(code)) {
- return res.sendFile(path.join(STATIC_DIR, "index.html"));
+ return res.sendFile(INDEX_FILE);
  }
  const entry = await getUrlByCode(code);
 
  if (!entry) {
- return res.sendFile(path.join(STATIC_DIR, "index.html"));
+ res.status(404).sendFile(INDEX_FILE);
+ return;
  }
 
  if (entry.expires_at && new Date(entry.expires_at) < new Date()) {

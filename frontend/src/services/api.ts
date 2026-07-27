@@ -1,4 +1,4 @@
-import type { ApiListResponse, ShortenResponse } from "../types";
+import type { ApiListResponse, ShortenResponse, UrlEntry } from "../types";
 
 const API_BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/+$/, "");
 
@@ -14,6 +14,18 @@ export async function shortenUrl(url: string, customCode?: string, expiresAt?: s
  return data;
 }
 
+export async function resolveUrl(code: string): Promise<UrlEntry | null> {
+ try {
+ const res = await fetch(`${API_BASE}/urls/${encodeURIComponent(code)}`);
+ if (!res.ok) return null;
+ const data: ApiListResponse = await res.json();
+ if (data.success && data.data.length > 0) return data.data[0];
+ return null;
+ } catch {
+ return null;
+ }
+}
+
 export async function fetchUrls(): Promise<ApiListResponse> {
  const res = await fetch(`${API_BASE}/urls`);
  const data = await res.json();
@@ -22,7 +34,7 @@ export async function fetchUrls(): Promise<ApiListResponse> {
 }
 
 export async function deleteUrl(shortCode: string): Promise<void> {
- const res = await fetch(`${API_BASE}/urls/${shortCode}`, { method: "DELETE" });
+ const res = await fetch(`${API_BASE}/urls/${encodeURIComponent(shortCode)}`, { method: "DELETE" });
  const data = await res.json();
  if (!res.ok) throw new Error(data.error || "Failed to delete URL");
 }
