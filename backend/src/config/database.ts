@@ -1,8 +1,9 @@
+// @ts-ignore
 import { Pool } from "pg";
 
-let pool: Pool;
+let pool: ReturnType<typeof Pool> | null = null;
 
-export function getPool(): Pool {
+export function getPool(): ReturnType<typeof Pool> {
  if (pool) return pool;
 
  pool = new Pool({
