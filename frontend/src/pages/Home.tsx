@@ -5,6 +5,56 @@ const SPINNER = ["|", "/", "-", "\\"];
 const COLD_THRESHOLD_MS = 15 * 60 * 1000;
 const LAST_ACTIVE_KEY = "linksnip_last_active_v1";
 
+const LOADING_STEPS_COLD = ["resolving target_url", "render.com: free-tier instance is asleep — cold-starting backend", "reconnecting to edge network", "allocating short code", "writing route to cdn cache"];
+const LOADING_STEPS_WARM = ["resolving target_url", "connecting to edge network", "allocating short code", "writing route to cdn cache"];
+const LOADING_DURATIONS_COLD = [450, 2200, 700, 500, 450];
+const LOADING_DURATIONS_WARM = [400, 500, 400, 400];
+
+function LoadingPanel({ cold, spinnerFrame }: { cold: boolean; spinnerFrame: number }) {
+ const [phase, setPhase] = useState(0);
+ const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+ useEffect(() => {
+ const durations = cold ? LOADING_DURATIONS_COLD : LOADING_DURATIONS_WARM;
+ setPhase(0);
+ timersRef.current.forEach(clearTimeout);
+ timersRef.current = [];
+ let cumulative = 0;
+ durations.forEach((d, i) => {
+ cumulative += d;
+ const t = setTimeout(() => setPhase(i + 1), cumulative);
+ timersRef.current.push(t);
+ });
+ return () => timersRef.current.forEach(clearTimeout);
+ }, [cold]);
+
+ const steps = cold ? LOADING_STEPS_COLD : LOADING_STEPS_WARM;
+ const totalSteps = steps.length;
+
+ return (
+ <div style={{ background: "#070b09", border: "1px solid rgba(57,255,136,0.3)", padding: 28, animation: "fadeUp 0.3s ease both" }}>
+ <div style={{ fontSize: 13, color: "#4b6b56", marginBottom: 16, display: "flex", alignItems: "center", gap: 8, fontFamily: "'JetBrains Mono', monospace" }}>
+ <span>&gt; POST /api/shorten</span>
+ <span style={{ color: "#3ffb7f", fontWeight: 700 }}>{SPINNER[spinnerFrame]}</span>
+ </div>
+ {steps.map((text, i) => {
+ const done = i < phase;
+ const current = i === phase;
+ const icon = done ? "✓" : current ? SPINNER[spinnerFrame] : "·";
+ const color = done ? "#3ffb7f" : current ? (text.includes("asleep") ? "#ffb454" : "#8fe6ad") : "#3a5245";
+ return (
+ <div key={i} style={{ fontSize: 12, padding: "3px 0", color, fontFamily: "'JetBrains Mono', monospace", transition: "color 0.2s" }}>
+ {icon} {text}
+ </div>
+ );
+ })}
+ <div style={{ marginTop: 18, height: 6, background: "rgba(57,255,136,0.12)", borderRadius: 3, overflow: "hidden" }}>
+ <div style={{ height: "100%", background: "#3ffb7f", width: Math.min(100, Math.round((phase / totalSteps) * 100)) + "%", transition: "width 0.4s ease" }} />
+ </div>
+ </div>
+ );
+}
+
 export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "dashboard") => void }) {
  const [longUrl, setLongUrl] = useState("");
  const [useCustom, setUseCustom] = useState(false);
@@ -14,26 +64,18 @@ export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "das
  const [successEntry, setSuccessEntry] = useState<{ shortUrl: string; originalUrl: string } | null>(null);
  const [copied, setCopied] = useState(false);
  const [isLoading, setIsLoading] = useState(false);
- const [loadingPhase, setLoadingPhase] = useState(0);
  const [spinnerFrame, setSpinnerFrame] = useState(0);
- const [loadingSteps, setLoadingSteps] = useState<string[]>([]);
- const [coldStart, setColdStart] = useState(false);
+ const [isColdStart, setIsColdStart] = useState(false);
+ const [loadingCold, setLoadingCold] = useState(false);
  const [bannerDismissed, setBannerDismissed] = useState(false);
- const spinnerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
- const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
- const loadingDurationsRef = useRef<number[]>([]);
+ const spinnerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
  useEffect(() => {
  const now = Date.now();
  const last = parseInt(localStorage.getItem(LAST_ACTIVE_KEY) || "0", 10);
- const cold = !last || (now - last) > COLD_THRESHOLD_MS;
- setColdStart(cold);
+ setIsColdStart(!last || (now - last) > COLD_THRESHOLD_MS);
  localStorage.setItem(LAST_ACTIVE_KEY, String(now));
-
- return () => {
- if (spinnerTimerRef.current) clearInterval(spinnerTimerRef.current);
- if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
- };
+ return () => { if (spinnerRef.current) clearInterval(spinnerRef.current); };
  }, []);
 
  const copySuccess = async () => {
@@ -41,32 +83,6 @@ export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "das
  try { await navigator.clipboard.writeText(successEntry.shortUrl); } catch {}
  setCopied(true);
  setTimeout(() => setCopied(false), 1400);
- };
-
- const advancePhase = (i: number) => {
- loadingTimerRef.current = setTimeout(() => {
- const durations = loadingDurationsRef.current;
- if (i < durations.length - 1) {
- setLoadingPhase(i + 1);
- advancePhase(i + 1);
- } else {
- finalizeEntry();
- }
- }, loadingDurationsRef.current[i]);
- };
-
- const finalizeEntry = () => {
- if (spinnerTimerRef.current) clearInterval(spinnerTimerRef.current);
- if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
- setSuccessEntry(prev => prev ? { ...prev } : null);
- setIsLoading(false);
- setLoadingPhase(0);
- setLoadingSteps([]);
- setLongUrl("");
- setUseCustom(false);
- setCustomCode("");
- setExpiresAt("");
- setError("");
  };
 
  const handleSubmit = async (e: React.FormEvent) => {
@@ -86,43 +102,33 @@ export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "das
  return;
  }
 
- const cold = coldStart;
- const steps = cold
- ? ["resolving target_url", "render.com: free-tier instance is asleep — cold-starting backend", "reconnecting to edge network", "allocating short code", "writing route to cdn cache"]
- : ["resolving target_url", "connecting to edge network", "allocating short code", "writing route to cdn cache"];
- const durations = cold ? [450, 2200, 700, 500, 450] : [400, 500, 400, 400];
-
- loadingDurationsRef.current = durations;
- setLoadingSteps(steps);
- setLoadingPhase(0);
- setSpinnerFrame(0);
+ const cold = isColdStart;
+ setLoadingCold(cold);
+ setIsColdStart(false);
  setIsLoading(true);
- setColdStart(false);
+ setSpinnerFrame(0);
 
- if (spinnerTimerRef.current) clearInterval(spinnerTimerRef.current);
- spinnerTimerRef.current = setInterval(() => {
- setSpinnerFrame(f => (f + 1) % SPINNER.length);
- }, 120);
-
- advancePhase(0);
+ if (spinnerRef.current) clearInterval(spinnerRef.current);
+ spinnerRef.current = setInterval(() => setSpinnerFrame(f => (f + 1) % SPINNER.length), 120);
 
  try {
  const data = await shortenUrl(normalized, useCustom ? customCode.trim() : undefined, expiresAt || undefined);
  setSuccessEntry({ shortUrl: data.data.shortUrl, originalUrl: data.data.original_url });
  } catch (err: any) {
- if (spinnerTimerRef.current) clearInterval(spinnerTimerRef.current);
- if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
- setIsLoading(false);
- setLoadingPhase(0);
- setLoadingSteps([]);
  setError(err.message);
+ } finally {
+ if (spinnerRef.current) clearInterval(spinnerRef.current);
+ setIsLoading(false);
+ setLoadingCold(false);
+ setLongUrl("");
+ setUseCustom(false);
+ setCustomCode("");
+ setExpiresAt("");
  }
  };
 
  const dismissBanner = () => setBannerDismissed(true);
-
- const showColdBanner = coldStart && !bannerDismissed && !isLoading;
- const totalSteps = loadingSteps.length || 1;
+ const showColdBanner = isColdStart && !bannerDismissed;
 
  return (
  <div>
@@ -154,7 +160,7 @@ export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "das
  <p style={{ fontSize: 13, color: "#4b6b56", margin: 0 }}># paste a long link, get a routable short one back. no sign-up.</p>
  </div>
 
- {!isLoading && (
+ {!isLoading && !successEntry && (
  <form onSubmit={handleSubmit} style={{ background: "#070b09", border: "1px solid rgba(57,255,136,0.25)", padding: 0, animation: "fadeUp 0.4s ease 0.06s both", overflow: "hidden" }}>
  <div style={{ borderBottom: "1px solid rgba(57,255,136,0.15)", padding: "8px 18px", display: "flex", alignItems: "center", gap: 8, background: "rgba(57,255,136,0.03)" }}>
  <span style={{ width: 8, height: 8, borderRadius: "50%", border: "1px solid rgba(255,110,110,0.6)" }} />
@@ -222,30 +228,9 @@ export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "das
  </form>
  )}
 
- {isLoading && (
- <div style={{ background: "#070b09", border: "1px solid rgba(57,255,136,0.3)", padding: 28, animation: "fadeUp 0.3s ease both" }}>
- <div style={{ fontSize: 13, color: "#4b6b56", marginBottom: 16, display: "flex", alignItems: "center", gap: 8, fontFamily: "'JetBrains Mono', monospace" }}>
- <span>&gt; POST /api/shorten</span>
- <span style={{ color: "#3ffb7f", fontWeight: 700 }}>{SPINNER[spinnerFrame]}</span>
- </div>
- {loadingSteps.map((text, i) => {
- const isDone = i < loadingPhase;
- const isCurrent = i === loadingPhase;
- const icon = isDone ? "✓" : isCurrent ? SPINNER[spinnerFrame] : "·";
- const color = isDone ? "#3ffb7f" : isCurrent ? (text.includes("asleep") ? "#ffb454" : "#8fe6ad") : "#3a5245";
- return (
- <div key={i} style={{ fontSize: 12, padding: "3px 0", color, fontFamily: "'JetBrains Mono', monospace", transition: "color 0.2s" }}>
- {icon} {text}
- </div>
- );
- })}
- <div style={{ marginTop: 18, height: 6, background: "rgba(57,255,136,0.12)", borderRadius: 3, overflow: "hidden" }}>
- <div style={{ height: "100%", background: "#3ffb7f", width: Math.min(100, Math.round(((loadingPhase + 1) / totalSteps) * 100)) + "%", transition: "width 0.4s ease" }} />
- </div>
- </div>
- )}
+ {isLoading && <LoadingPanel cold={loadingCold} spinnerFrame={spinnerFrame} />}
 
- {successEntry && (
+ {successEntry && !isLoading && (
  <div style={{ marginTop: 20, background: "#070b09", border: "1px solid rgba(57,255,136,0.4)", overflow: "hidden", animation: "fadeUp 0.35s ease both" }}>
  <div style={{ borderBottom: "1px solid rgba(57,255,136,0.15)", padding: "6px 18px", display: "flex", alignItems: "center", gap: 8, background: "rgba(57,255,136,0.03)" }}>
  <span style={{ width: 8, height: 8, borderRadius: "50%", border: "1px solid rgba(57,255,136,0.6)" }} />
