@@ -12,15 +12,8 @@ services:
  - key: PORT
  value: 10000
  - key: DATABASE_URL
- fromDatabase:
- name: urlshortener-db
- property: connectionString
+ sync: false
  - key: BASE_URL
  sync: false
  - key: CORS_ORIGIN
  sync: false
-
-databases:
- - name: urlshortener-db
- plan: free
- databaseName: urlshortener
