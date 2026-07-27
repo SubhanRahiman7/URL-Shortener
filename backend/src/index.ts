@@ -2,15 +2,19 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import { router } from "./routes/index.js";
 import { getUrlByCode, incrementClicks } from "./controllers/urlController.js";
 import { getPool } from "./config/database.js";
 
 dotenv.config();
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+const STATIC_DIR = path.join(__dirname, "..", "frontend", "dist");
 
 app.use(helmet());
 app.use(cors({ origin: CORS_ORIGIN }));
@@ -25,10 +29,13 @@ app.use("/api", router);
 app.get("/:code", async (req, res) => {
  try {
  const { code } = req.params;
+ if (!/^[A-Za-z0-9_-]{4,20}$/.test(code)) {
+ return res.sendFile(path.join(STATIC_DIR, "index.html"));
+ }
  const entry = await getUrlByCode(code);
 
  if (!entry) {
- return res.status(404).json({ success: false, error: "Short URL not found" });
+ return res.sendFile(path.join(STATIC_DIR, "index.html"));
  }
 
  if (entry.expires_at && new Date(entry.expires_at) < new Date()) {
@@ -40,6 +47,12 @@ app.get("/:code", async (req, res) => {
  } catch (err: any) {
  res.status(500).json({ success: false, error: "Redirect failed" });
  }
+});
+
+app.use(express.static(STATIC_DIR));
+
+app.get("*", (_req, res) => {
+ res.sendFile(path.join(STATIC_DIR, "index.html"));
 });
 
 app.use((_req, res) => {
