@@ -1,5 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { shortenUrl } from "../services/api";
+
+const SPINNER = ["|", "/", "-", "\\"];
+const COLD_THRESHOLD_MS = 15 * 60 * 1000;
+const LAST_ACTIVE_KEY = "linksnip_last_active_v1";
 
 export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "dashboard") => void }) {
  const [longUrl, setLongUrl] = useState("");
@@ -9,13 +13,60 @@ export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "das
  const [error, setError] = useState("");
  const [successEntry, setSuccessEntry] = useState<{ shortUrl: string; originalUrl: string } | null>(null);
  const [copied, setCopied] = useState(false);
- const [busy, setBusy] = useState(false);
+ const [isLoading, setIsLoading] = useState(false);
+ const [loadingPhase, setLoadingPhase] = useState(0);
+ const [spinnerFrame, setSpinnerFrame] = useState(0);
+ const [loadingSteps, setLoadingSteps] = useState<string[]>([]);
+ const [coldStart, setColdStart] = useState(false);
+ const [bannerDismissed, setBannerDismissed] = useState(false);
+ const spinnerTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+ const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+ const loadingDurationsRef = useRef<number[]>([]);
+
+ useEffect(() => {
+ const now = Date.now();
+ const last = parseInt(localStorage.getItem(LAST_ACTIVE_KEY) || "0", 10);
+ const cold = !last || (now - last) > COLD_THRESHOLD_MS;
+ setColdStart(cold);
+ localStorage.setItem(LAST_ACTIVE_KEY, String(now));
+
+ return () => {
+ if (spinnerTimerRef.current) clearInterval(spinnerTimerRef.current);
+ if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+ };
+ }, []);
 
  const copySuccess = async () => {
  if (!successEntry) return;
  try { await navigator.clipboard.writeText(successEntry.shortUrl); } catch {}
  setCopied(true);
  setTimeout(() => setCopied(false), 1400);
+ };
+
+ const advancePhase = (i: number) => {
+ loadingTimerRef.current = setTimeout(() => {
+ const durations = loadingDurationsRef.current;
+ if (i < durations.length - 1) {
+ setLoadingPhase(i + 1);
+ advancePhase(i + 1);
+ } else {
+ finalizeEntry();
+ }
+ }, loadingDurationsRef.current[i]);
+ };
+
+ const finalizeEntry = () => {
+ if (spinnerTimerRef.current) clearInterval(spinnerTimerRef.current);
+ if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+ setSuccessEntry(prev => prev ? { ...prev } : null);
+ setIsLoading(false);
+ setLoadingPhase(0);
+ setLoadingSteps([]);
+ setLongUrl("");
+ setUseCustom(false);
+ setCustomCode("");
+ setExpiresAt("");
+ setError("");
  };
 
  const handleSubmit = async (e: React.FormEvent) => {
@@ -35,23 +86,53 @@ export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "das
  return;
  }
 
- setBusy(true);
+ const cold = coldStart;
+ const steps = cold
+ ? ["resolving target_url", "render.com: free-tier instance is asleep — cold-starting backend", "reconnecting to edge network", "allocating short code", "writing route to cdn cache"]
+ : ["resolving target_url", "connecting to edge network", "allocating short code", "writing route to cdn cache"];
+ const durations = cold ? [450, 2200, 700, 500, 450] : [400, 500, 400, 400];
+
+ loadingDurationsRef.current = durations;
+ setLoadingSteps(steps);
+ setLoadingPhase(0);
+ setSpinnerFrame(0);
+ setIsLoading(true);
+ setColdStart(false);
+
+ if (spinnerTimerRef.current) clearInterval(spinnerTimerRef.current);
+ spinnerTimerRef.current = setInterval(() => {
+ setSpinnerFrame(f => (f + 1) % SPINNER.length);
+ }, 120);
+
+ advancePhase(0);
+
  try {
  const data = await shortenUrl(normalized, useCustom ? customCode.trim() : undefined, expiresAt || undefined);
  setSuccessEntry({ shortUrl: data.data.shortUrl, originalUrl: data.data.original_url });
- setLongUrl("");
- setUseCustom(false);
- setCustomCode("");
- setExpiresAt("");
  } catch (err: any) {
+ if (spinnerTimerRef.current) clearInterval(spinnerTimerRef.current);
+ if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+ setIsLoading(false);
+ setLoadingPhase(0);
+ setLoadingSteps([]);
  setError(err.message);
- } finally {
- setBusy(false);
  }
  };
 
+ const dismissBanner = () => setBannerDismissed(true);
+
+ const showColdBanner = coldStart && !bannerDismissed && !isLoading;
+ const totalSteps = loadingSteps.length || 1;
+
  return (
  <div>
+ {showColdBanner && (
+ <div style={{ position: "relative", zIndex: 5, maxWidth: 660, margin: "16px auto 0", padding: "10px 16px", border: "1px solid rgba(255,180,84,0.4)", background: "rgba(255,180,84,0.06)", color: "#ffb454", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, animation: "fadeUp 0.3s ease both" }}>
+ <span>&gt; backend asleep — free-tier instance spins down when idle. first request may take longer than usual.</span>
+ <button onClick={dismissBanner} style={{ background: "transparent", border: "none", color: "#ffb454", cursor: "pointer", fontSize: 12, flexShrink: 0 }} onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.7"; }} onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}>[x]</button>
+ </div>
+ )}
+
  <div style={{ marginBottom: 32, animation: "fadeUp 0.35s ease both" }}>
  <div style={{ fontSize: 13, color: "#4b6b56", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
  <span style={{ color: "#3ffb7f" }}>visitor@web</span>
@@ -73,6 +154,7 @@ export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "das
  <p style={{ fontSize: 13, color: "#4b6b56", margin: 0 }}># paste a long link, get a routable short one back. no sign-up.</p>
  </div>
 
+ {!isLoading && (
  <form onSubmit={handleSubmit} style={{ background: "#070b09", border: "1px solid rgba(57,255,136,0.25)", padding: 0, animation: "fadeUp 0.4s ease 0.06s both", overflow: "hidden" }}>
  <div style={{ borderBottom: "1px solid rgba(57,255,136,0.15)", padding: "8px 18px", display: "flex", alignItems: "center", gap: 8, background: "rgba(57,255,136,0.03)" }}>
  <span style={{ width: 8, height: 8, borderRadius: "50%", border: "1px solid rgba(255,110,110,0.6)" }} />
@@ -133,14 +215,38 @@ export default function HomePage({ onNavigate }: { onNavigate: (r: "home" | "das
  </div>
  )}
 
- <button type="submit" disabled={busy} style={{ width: "100%", marginTop: 22, background: "transparent", border: "1px solid #3ffb7f", padding: 13, fontSize: 14, fontWeight: 700, color: "#3ffb7f", cursor: busy ? "wait" : "pointer", letterSpacing: "0.03em", fontFamily: "'JetBrains Mono', monospace", transition: "all 0.15s" }} onMouseEnter={(e) => { if (!busy) { e.currentTarget.style.background = "#3ffb7f"; e.currentTarget.style.color = "#04070a"; } }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#3ffb7f"; }}>
- {busy ? "[ .. ]" : "[ RUN ./shorten ]"}
+ <button type="submit" style={{ width: "100%", marginTop: 22, background: "transparent", border: "1px solid #3ffb7f", padding: 13, fontSize: 14, fontWeight: 700, color: "#3ffb7f", cursor: "pointer", letterSpacing: "0.03em", fontFamily: "'JetBrains Mono', monospace", transition: "all 0.15s" }} onMouseEnter={(e) => { e.currentTarget.style.background = "#3ffb7f"; e.currentTarget.style.color = "#04070a"; e.currentTarget.style.transform = "scale(1.02)"; e.currentTarget.style.boxShadow = "0 0 18px rgba(57,255,136,0.5)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#3ffb7f"; e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "none"; }}>
+ [ RUN ./shorten ]
  </button>
  </div>
  </form>
+ )}
+
+ {isLoading && (
+ <div style={{ background: "#070b09", border: "1px solid rgba(57,255,136,0.3)", padding: 28, animation: "fadeUp 0.3s ease both" }}>
+ <div style={{ fontSize: 13, color: "#4b6b56", marginBottom: 16, display: "flex", alignItems: "center", gap: 8, fontFamily: "'JetBrains Mono', monospace" }}>
+ <span>&gt; POST /api/shorten</span>
+ <span style={{ color: "#3ffb7f", fontWeight: 700 }}>{SPINNER[spinnerFrame]}</span>
+ </div>
+ {loadingSteps.map((text, i) => {
+ const isDone = i < loadingPhase;
+ const isCurrent = i === loadingPhase;
+ const icon = isDone ? "✓" : isCurrent ? SPINNER[spinnerFrame] : "·";
+ const color = isDone ? "#3ffb7f" : isCurrent ? (text.includes("asleep") ? "#ffb454" : "#8fe6ad") : "#3a5245";
+ return (
+ <div key={i} style={{ fontSize: 12, padding: "3px 0", color, fontFamily: "'JetBrains Mono', monospace", transition: "color 0.2s" }}>
+ {icon} {text}
+ </div>
+ );
+ })}
+ <div style={{ marginTop: 18, height: 6, background: "rgba(57,255,136,0.12)", borderRadius: 3, overflow: "hidden" }}>
+ <div style={{ height: "100%", background: "#3ffb7f", width: Math.min(100, Math.round(((loadingPhase + 1) / totalSteps) * 100)) + "%", transition: "width 0.4s ease" }} />
+ </div>
+ </div>
+ )}
 
  {successEntry && (
- <div style={{ marginTop: 20, background: "#070b09", border: "1px solid rgba(57,255,136,0.35)", overflow: "hidden", animation: "fadeUp 0.35s ease both" }}>
+ <div style={{ marginTop: 20, background: "#070b09", border: "1px solid rgba(57,255,136,0.4)", overflow: "hidden", animation: "fadeUp 0.35s ease both" }}>
  <div style={{ borderBottom: "1px solid rgba(57,255,136,0.15)", padding: "6px 18px", display: "flex", alignItems: "center", gap: 8, background: "rgba(57,255,136,0.03)" }}>
  <span style={{ width: 8, height: 8, borderRadius: "50%", border: "1px solid rgba(57,255,136,0.6)" }} />
  <span style={{ fontSize: 11, color: "#4b6b56" }}>output</span>
