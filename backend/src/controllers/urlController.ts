@@ -1,5 +1,5 @@
-import { getPool } from "../config/database";
-import { generateShortCode, isValidUrl, sanitizeUrl } from "../utils/helpers";
+import { getPool } from "../config/database.js";
+import { generateShortCode, isValidUrl, sanitizeUrl } from "../utils/helpers.js";
 
 export interface UrlRow {
  id: string;

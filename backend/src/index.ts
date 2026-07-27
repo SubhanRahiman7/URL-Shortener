@@ -2,9 +2,9 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import dotenv from "dotenv";
-import { router } from "./routes";
-import { getUrlByCode, incrementClicks } from "./controllers/urlController";
-import { getPool } from "./config/database";
+import { router } from "./routes/index.js";
+import { getUrlByCode, incrementClicks } from "./controllers/urlController.js";
+import { getPool } from "./config/database.js";
 
 dotenv.config();
 

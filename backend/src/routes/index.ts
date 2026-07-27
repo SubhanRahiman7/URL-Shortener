@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
-import { createShortUrl, deleteUrl, getUrlByCode, incrementClicks, listUrls } from "../controllers/urlController";
+import { createShortUrl, deleteUrl, getUrlByCode, incrementClicks, listUrls } from "../controllers/urlController.js";
 
 export const router = Router();
 
