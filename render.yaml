@@ -1,16 +1,18 @@
 services:
- - type: web
+- type: web
  name: url-shortener-api
  runtime: node
  plan: free
  region: oregon
- buildCommand: cd frontend && npm ci && npm run build && mkdir -p backend/frontend && cp -r dist backend/frontend/dist && cd ../backend && npm ci --include=dev && npm run build
+ buildCommand: |
+ cd frontend && npm ci && npm run build && mkdir -p backend/frontend && cp -r dist backend/frontend/dist &&
+ cd ../backend && npm ci --include=dev && npm run build
  startCommand: cd backend && node dist/index.js
  envVars:
  - key: NODE_ENV
  value: production
  - key: PORT
- value: 10000
+ value: "10000"
  - key: DATABASE_URL
  sync: false
  - key: BASE_URL
