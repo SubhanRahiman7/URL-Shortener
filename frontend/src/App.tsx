@@ -29,11 +29,7 @@ export default function App() {
 
  <nav style={{ position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 40px", background: "rgba(4,7,10,0.92)", borderBottom: "1px solid rgba(57,255,136,0.25)" }}>
  <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setRoute("home")}>
- <span style={{ display: "flex", gap: 5 }}>
- <span style={{ width: 7, height: 7, border: "1px solid rgba(57,255,136,0.4)" }} />
- <span style={{ width: 7, height: 7, border: "1px solid rgba(57,255,136,0.4)" }} />
- <span style={{ width: 7, height: 7, border: "1px solid rgba(57,255,136,0.4)" }} />
- </span>
+ <img src="/logo.png" alt="LinkSnip" style={{ width: 28, height: 28, borderRadius: 7, objectFit: "cover" }} />
  <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em", color: "#e8fff0" }}>
  linksnip<span style={{ color: "#3ffb7f" }}>@</span>shortener
  </span>
